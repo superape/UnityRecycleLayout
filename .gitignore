@@ -1,5 +1,7 @@
 
-Temp/
 Library/
+ProjectSettings/
+Temp/
+UnityPackageManager/
 UnityRecycleLayout.CSharp.csproj
 UnityRecycleLayout.sln
