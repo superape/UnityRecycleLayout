@@ -17,7 +17,7 @@ public int GetCurrentIndex()
 public ElementBuffer ElementBufferInIndex(int index)
 ```
 
-### 根据contentPositionSetting，按照不同的方式刷新布局内的所有element：
+### 根据contentPositionSetting，按照不同的方式刷新布局内的所有element:
 ```
 public void RefreshData(ContentPositionSetting contentPositionSetting = ContentPositionSetting.keep, Action onComplete = null)
 
