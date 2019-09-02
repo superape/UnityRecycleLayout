@@ -11,9 +11,11 @@ public class ButtonBehaviour : MonoBehaviour
     public Button gotoBtn;
     public Button currentIndexBtn;
     public RecycleLayout.RecycleLayout recycleLayout;
+    public static ButtonBehaviour instance;
     // Use this for initialization
     void Start()
     {
+        instance = this;
         gotoBtn.onClick.RemoveAllListeners();
         gotoBtn.onClick.AddListener(GotoIndex);
 

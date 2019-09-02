@@ -6,7 +6,7 @@ using RecycleLayout;
 
 public class AdapterTest : RecycleLayoutAdapter
 {
-    private int dataCount = 20;
+    private int dataCount = 100000;
 
     public override int ElementIndex2PrefabIndex(int elementIndex)
     {

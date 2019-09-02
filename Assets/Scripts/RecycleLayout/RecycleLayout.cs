@@ -99,7 +99,6 @@ namespace RecycleLayout
             }
         }
 
-        [SerializeField]
         private RecycleLayoutAdapter m_adapter;
         public RecycleLayoutAdapter Adapter
         {
@@ -119,9 +118,7 @@ namespace RecycleLayout
 
         private List<ElementBuffer>[] bufferPool;
 
-        protected List<ElementPositionInfo> elementPositionInfos = new List<ElementPositionInfo>();
-
-        private List<int> showingCells = new List<int>();//element index
+        protected Dictionary<int, ElementPositionInfo> elementPositionInfoMapper = new Dictionary<int, ElementPositionInfo>();//index-elementPositionInfo
 
         private int CellsCount
         {
@@ -168,11 +165,11 @@ namespace RecycleLayout
 
             GenerateCellBuffers();
 
-            CalculateSizeAndCellPos(ContentPositionSetting.gotoBegin);
+            CalculateCellPosAndContentSize(ContentPositionSetting.gotoBegin);
 
             this.ScrollRect.onValueChanged.AddListener(FillData);
 
-            FillData(Vector2.zero);
+            FillData(0);
 
             if (OnFillDataCompleted != null)
             {
@@ -222,9 +219,8 @@ namespace RecycleLayout
             }
         }
 
-        public float CalculateSizeAndCellPos(ContentPositionSetting contentPositionSetting = ContentPositionSetting.none)
+        private float CalculateCellPosAndContentSize(ContentPositionSetting contentPositionSetting = ContentPositionSetting.none)
         {
-            this.elementPositionInfos.Clear();
             float length = 0;
             float offsetX = 0;
             float offsetY = 0;
@@ -247,7 +243,7 @@ namespace RecycleLayout
                     {
                         int elementIndex = i + j;
                         Vector3 localPos = new Vector3(offsetX, -offsetY, 0.0f);
-                        this.elementPositionInfos.Add(new ElementPositionInfo(elementIndex, localPos));
+                        this.AddElementPositionInfo(elementIndex, localPos);
                         if (this.Left2Right)
                         {
                             offsetX += cellWidth + Spacing.x;
@@ -299,7 +295,7 @@ namespace RecycleLayout
                     {
                         int elementIndex = i + j;
                         Vector3 localPos = new Vector3(offsetX, offsetY, 0.0f);
-                        this.elementPositionInfos.Add(new ElementPositionInfo(elementIndex, localPos));
+                        this.AddElementPositionInfo(elementIndex, localPos);
                         offsetY -= cellHeight + Spacing.y;
                         if (currentWidth > maxWidthInColunm)
                         {
@@ -338,29 +334,62 @@ namespace RecycleLayout
             return length;
         }
 
+        private void AddElementPositionInfo(int elementIndex, Vector3 localPos)
+        {
+            ElementPositionInfo positionInfo = null;
+            if (this.elementPositionInfoMapper.TryGetValue(elementIndex, out positionInfo))
+            {
+                positionInfo.LocalPos = localPos;
+            }
+            else
+            {
+                this.elementPositionInfoMapper.Add(elementIndex, new ElementPositionInfo(elementIndex, localPos));
+            }
+        }
 
         private void FillData(Vector2 vec2)
         {
+            FillData();
+        }
+
+        private void FillData(int currentIndex = -1)
+        {
             RecycleBuffers();
+            currentIndex = currentIndex == -1 ? this.GetCurrentIndex() : currentIndex;
+            
             if (this.Vertical)
             {
                 float currentPos = content.localPosition.y;
-
-                for (int i = 0; i < this.elementPositionInfos.Count; i++)
+                float distance2Top = 0f;
+                for (int i = currentIndex; i >= 0 && distance2Top >= this.visualRange.x && distance2Top <= this.visualRange.y; i--)
                 {
-                    ElementPositionInfo elementPositionInfo = elementPositionInfos[i];
-                    float distance2Top = -elementPositionInfo.LocalPos.y - currentPos;
+                    ElementPositionInfo elementPositionInfo = this.elementPositionInfoMapper[i];
+                    distance2Top = -elementPositionInfo.LocalPos.y - currentPos;
+                    SetElement(distance2Top, elementPositionInfo);
+                }
+                distance2Top = 0f;
+                for (int i = currentIndex; i < this.elementPositionInfoMapper.Count && distance2Top >= this.visualRange.x && distance2Top <= this.visualRange.y; i++)
+                {
+                    ElementPositionInfo elementPositionInfo = this.elementPositionInfoMapper[i];
+                    distance2Top = -elementPositionInfo.LocalPos.y - currentPos;
                     SetElement(distance2Top, elementPositionInfo);
                 }
             }
             else if (this.Horizontal)
             {
                 float currentPos = content.localPosition.x;
-
-                for (int i = 0; i < this.elementPositionInfos.Count; i++)
+                float distance2Top = 0f;
+                for (int i = currentIndex; i >= 0 && distance2Top >= this.visualRange.x && distance2Top <= this.visualRange.y; i--)
                 {
-                    ElementPositionInfo elementPositionInfo = elementPositionInfos[i];
-                    float distance2Top = elementPositionInfo.LocalPos.x + currentPos;
+                    ElementPositionInfo elementPositionInfo = this.elementPositionInfoMapper[i];
+                    distance2Top = elementPositionInfo.LocalPos.x + currentPos;
+                    SetElement(distance2Top, elementPositionInfo);
+                }
+                distance2Top = 0f;
+                for (int i = currentIndex; i < this.elementPositionInfoMapper.Count && distance2Top >= this.visualRange.x && distance2Top <= this.visualRange.y; i++)
+                {
+                    ElementPositionInfo elementPositionInfo = this.elementPositionInfoMapper[i];
+                    distance2Top = elementPositionInfo.LocalPos.x + currentPos;
                     SetElement(distance2Top, elementPositionInfo);
                 }
             }
@@ -368,14 +397,27 @@ namespace RecycleLayout
 
         private void SetElement(float distance2Top, ElementPositionInfo elementPositionInfo)
         {
-            if (distance2Top >= this.visualRange.x && distance2Top <= this.visualRange.y && !this.showingCells.Contains(elementPositionInfo.ElementIndex))
+            if (distance2Top >= this.visualRange.x && distance2Top <= this.visualRange.y && !elementPositionInfo.Visible)
             {
-                ElementBuffer buffer = GetUsableBuffer(elementPositionInfo.ElementIndex);
-                if (buffer != null)
+                if (elementPositionInfo.Invisible)
                 {
-                    buffer.Use(elementPositionInfo);
-                    buffer.SetSize(this.GetElementSize(elementPositionInfo.ElementIndex));
-                    this.Adapter.FillElementData(buffer, elementPositionInfo.ElementIndex);
+                    ElementBuffer buffer = GetUsableBuffer(elementPositionInfo.ElementIndex);
+                    if (buffer != null)
+                    {
+                        buffer.Use(elementPositionInfo);
+                        buffer.SetSize(this.GetElementSize(elementPositionInfo.ElementIndex));
+                        this.Adapter.FillElementData(buffer, elementPositionInfo.ElementIndex);
+                    }
+                }
+                else if (elementPositionInfo.VisibleAndNeedRefresh)
+                {
+                    ElementBuffer buffer = elementPositionInfo.Buffer;
+                    if (buffer != null)
+                    {
+                        buffer.Use(elementPositionInfo);
+                        buffer.SetSize(this.GetElementSize(elementPositionInfo.ElementIndex));
+                        this.Adapter.FillElementData(buffer, elementPositionInfo.ElementIndex);
+                    }
                 }
             }
         }
@@ -388,7 +430,6 @@ namespace RecycleLayout
             {
                 if (!buffers[i].IsUsing)
                 {
-                    this.showingCells.Add(index);
                     return buffers[i];
                 }
             }
@@ -404,16 +445,29 @@ namespace RecycleLayout
             ElementBuffer buffer = new ElementBuffer(go);
             this.bufferPool[prefabIndex].Add(buffer);
 
-            this.showingCells.Add(index);
             return buffer;
         }
 
         private Vector2 GetElementSize(int index)
         {
-            return Adapter.GetElementSize(index);
+            Vector2 size = Vector2.zero;
+            ElementBuffer buffer = null;
+            if (this.elementPositionInfoMapper.ContainsKey(index))
+            {
+                buffer = this.elementPositionInfoMapper[index].Buffer;
+            }
+            if (buffer != null && buffer.Element.TryGetElementSize(out size))
+            {
+
+            }
+            else
+            {
+                size = Adapter.GetElementSize(index);
+            }
+            return size;
         }
 
-        private void ForceRecycleAllBuffers()
+        private void PrepareRefreshAllBuffers()
         {
             for (int i = 0; i < this.bufferPool.Length; i++)
             {
@@ -421,8 +475,7 @@ namespace RecycleLayout
                 for (int j = 0; j < buffers.Count; j++)
                 {
                     ElementBuffer buffer = buffers[j];
-                    buffer.Recycle();
-                    this.showingCells.Remove(buffer.ElementIndex);
+                    buffer.PositionInfo.State = ElementState.visibleAndNeedRefresh;
                 }
             }
         }
@@ -450,17 +503,17 @@ namespace RecycleLayout
 
                     if (this.Vertical)
                     {
-                        distance2Top = -buffer.LocalPosition.y - currentPos;
+                        distance2Top = -buffer.PositionInfo.LocalPos.y - currentPos;
                     }
                     else if (this.Horizontal)
                     {
-                        distance2Top = buffer.LocalPosition.x + currentPos;
+                        distance2Top = buffer.PositionInfo.LocalPos.x + currentPos;
                     }
 
                     if (buffer.IsUsing && (distance2Top < this.visualRange.x || distance2Top > this.visualRange.y))
                     {
                         buffer.Recycle();
-                        this.showingCells.Remove(buffer.ElementIndex);
+                        buffer.PositionInfo.State = ElementState.invisible;
                     }
                 }
             }
@@ -468,9 +521,9 @@ namespace RecycleLayout
         #endregion
 
         #region interface
-        public virtual GameObject GameobjectInIndex(int index)
+        public virtual ElementBuffer ElementBufferInIndex(int index)
         {
-            GameObject obj = null;
+            ElementBuffer obj = null;
             for (int i = 0; i < bufferPool.Length; i++)
             {
                 List<ElementBuffer> buffers = bufferPool[i];
@@ -478,7 +531,7 @@ namespace RecycleLayout
                 {
                     if (buffers[j].ElementIndex == index && buffers[j].IsUsing)
                     {
-                        obj = buffers[j].BufferGameObject;
+                        obj = buffers[j];
                         break;
                     }
                 }
@@ -489,75 +542,59 @@ namespace RecycleLayout
 
         public virtual void GotoIndex(int index, float duration = 0.5f, Action onComplete = null)
         {
-            if (index > this.CellsCount)
+            ElementPositionInfo element = null;
+
+            if (this.elementPositionInfoMapper.TryGetValue(index, out element))
             {
-                return;
-            }
-
-            ElementPositionInfo element = elementPositionInfos[index];
-
-            if (this.Vertical)
-            {
-                float height = -element.LocalPos.y;
-
-                if (duration > 0)
+                if (this.Vertical)
                 {
-                    DOTween.Sequence().Append(content.DOLocalMoveY(height, duration))
-                        .AppendCallback(() =>
-                        {
-                            if (onComplete != null)
-                            {
-                                onComplete();
-                            }
-                        }).Play();
-                }
-                else
-                {
-                    content.localPosition = new Vector3(content.localPosition.x, height, content.localPosition.z);
-                    this.FillData(Vector2.zero);
-                    if (onComplete != null)
+                    float height = -element.LocalPos.y;
+
+                    if (duration > 0)
                     {
-                        onComplete();
+                        DOTween.Sequence().Append(content.DOLocalMoveY(height, duration))
+                            .AppendCallback(() =>
+                            {
+                                if (onComplete != null)
+                                {
+                                    onComplete();
+                                }
+                            }).Play();
+                    }
+                    else
+                    {
+                        content.localPosition = new Vector3(content.localPosition.x, height, content.localPosition.z);
+                        this.FillData();
+                        if (onComplete != null)
+                        {
+                            onComplete();
+                        }
                     }
                 }
-            }
-            else if (this.Horizontal)
-            {
-                float width = -element.LocalPos.x;
-                if (duration > 0)
+                else if (this.Horizontal)
                 {
-                    DOTween.Sequence().Append(content.DOLocalMoveX(width, duration))
-                        .AppendCallback(() =>
-                        {
-                            if (onComplete != null)
-                            {
-                                onComplete();
-                            }
-                        }).Play();
-                }
-                else
-                {
-                    content.localPosition = new Vector3(width, content.localPosition.y, content.localPosition.z);
-                    this.FillData(Vector2.zero);
-                    if (onComplete != null)
+                    float width = -element.LocalPos.x;
+                    if (duration > 0)
                     {
-                        onComplete();
+                        DOTween.Sequence().Append(content.DOLocalMoveX(width, duration))
+                            .AppendCallback(() =>
+                            {
+                                if (onComplete != null)
+                                {
+                                    onComplete();
+                                }
+                            }).Play();
+                    }
+                    else
+                    {
+                        content.localPosition = new Vector3(width, content.localPosition.y, content.localPosition.z);
+                        this.FillData();
+                        if (onComplete != null)
+                        {
+                            onComplete();
+                        }
                     }
                 }
-            }
-        }
-
-        public void RefreshData(ContentPositionSetting contentPositionSetting = ContentPositionSetting.keep, Action onComplete = null)
-        {
-            Adapter.Initialize();
-
-            ForceRecycleAllBuffers();
-            CalculateSizeAndCellPos(contentPositionSetting);
-            FillData(Vector2.zero);
-
-            if (onComplete != null)
-            {
-                onComplete();
             }
         }
 
@@ -574,7 +611,7 @@ namespace RecycleLayout
                     for (int j = 0; j < buffers.Count; j++)
                     {
                         ElementBuffer buffer = buffers[j];
-                        if (buffer.IsUsing && buffer.LocalPosition.y <= -currentPos && buffer.ElementIndex < index)
+                        if (buffer.IsUsing && buffer.PositionInfo.LocalPos.y <= -currentPos && buffer.ElementIndex < index)
                         {
                             index = buffer.ElementIndex;
                         }
@@ -592,11 +629,11 @@ namespace RecycleLayout
                         ElementBuffer buffer = buffers[j];
                         if (buffer.IsUsing)
                         {
-                            if (this.Left2Right && buffer.LocalPosition.x >= -currentPos && buffer.ElementIndex < index)
+                            if (this.Left2Right && buffer.PositionInfo.LocalPos.x >= -currentPos && buffer.ElementIndex < index)
                             {
                                 index = buffer.ElementIndex;
                             }
-                            else if (!this.Left2Right && buffer.LocalPosition.x <= -currentPos && buffer.ElementIndex < index)
+                            else if (!this.Left2Right && buffer.PositionInfo.LocalPos.x <= -currentPos && buffer.ElementIndex < index)
                             {
                                 index = buffer.ElementIndex;
                             }
@@ -605,6 +642,20 @@ namespace RecycleLayout
                 }
             }
             return index;
+        }
+
+        public void RefreshData(ContentPositionSetting contentPositionSetting = ContentPositionSetting.keep, Action onComplete = null)
+        {
+            Adapter.Initialize();
+
+            PrepareRefreshAllBuffers();
+            CalculateCellPosAndContentSize(contentPositionSetting);
+            FillData();
+
+            if (onComplete != null)
+            {
+                onComplete();
+            }
         }
         #endregion
     }
@@ -618,18 +669,71 @@ namespace RecycleLayout
             get { return elementIndex; }
         }
 
+        private ElementBuffer buffer;
+
+        public ElementBuffer Buffer
+        {
+            get { return buffer; }
+        }
+
         private Vector3 localPos;
 
         public Vector3 LocalPos
         {
             get { return localPos; }
+            set
+            {
+                localPos = value;
+            }
         }
+
+        private ElementState state;
+
+        public ElementState State
+        {
+            set
+            {
+                state = value;
+            }
+        }
+
+        public bool Invisible
+        {
+            get
+            {
+                return this.state == ElementState.invisible;
+            }
+        }
+
+        public bool Visible
+        {
+            get
+            {
+                return this.state == ElementState.visible;
+            }
+        }
+
+        public bool VisibleAndNeedRefresh
+        {
+            get
+            {
+                return this.state == ElementState.visibleAndNeedRefresh;
+            }
+        }
+
 
         public ElementPositionInfo(int index, Vector3 localPos)
         {
             this.elementIndex = index;
 
             this.localPos = localPos;
+
+            this.state = ElementState.invisible;
+        }
+
+        public void SetBuffer(ElementBuffer buffer)
+        {
+            this.buffer = buffer;
         }
     }
 
@@ -642,6 +746,13 @@ namespace RecycleLayout
             get { return elementIndex; }
         }
 
+        private ElementPositionInfo positionInfo;
+
+        public ElementPositionInfo PositionInfo
+        {
+            get { return positionInfo; }
+        }
+
         private GameObject bufferGameObject;
 
         public GameObject BufferGameObject
@@ -650,14 +761,6 @@ namespace RecycleLayout
         }
 
         private RectTransform rectTransform;
-
-        public Vector3 LocalPosition
-        {
-            get
-            {
-                return rectTransform.localPosition;
-            }
-        }
 
         private RecycleLayoutElement element;
 
@@ -692,6 +795,11 @@ namespace RecycleLayout
         public void Use(ElementPositionInfo elementPositionInfo)
         {
             this.isUsing = true;
+            this.positionInfo = elementPositionInfo;
+
+            elementPositionInfo.SetBuffer(this);
+            elementPositionInfo.State = ElementState.visible;
+
             this.elementIndex = elementPositionInfo.ElementIndex;
             this.bufferGameObject.SetActive(true);
             this.rectTransform.localPosition = elementPositionInfo.LocalPos;
@@ -722,5 +830,12 @@ namespace RecycleLayout
         none = 0,//do nothing
         gotoBegin = 1,//goto begin
         keep = 2,//keep current showing element
+    }
+
+    public enum ElementState
+    {
+        invisible,
+        visible,
+        visibleAndNeedRefresh,
     }
 }

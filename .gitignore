@@ -1,5 +1,6 @@
-
+.vs/
 Library/
+obj/
 ProjectSettings/
 Temp/
 UnityPackageManager/
@@ -10,3 +11,5 @@ RecycleLayout.csproj
 RecycleLayout.sln
 RecycleLayout.v12.suo
 UnityRecycleLayout.v12.suo
+*.rar
+Assembly-CSharp.csproj
