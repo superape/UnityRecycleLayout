@@ -7,7 +7,7 @@ Unity里带缓冲的自动布局控件，支持Horizontal/Vertical/Left2Right/Ri
 public void GotoIndex(int index, float duration = 0.5f, Action onComplete = null)
 ```
 
-### 获取当前视口内完整展示的最前的element的index:
+### 获取当前视口内完整展示的最靠前的element的index:
 ```
 public int GetCurrentIndex()
 ```
@@ -17,7 +17,7 @@ public int GetCurrentIndex()
 public ElementBuffer ElementBufferInIndex(int index)
 ```
 
-### 根据contentPositionSetting，按照不同的方式刷新布局内的所有element
+### 根据contentPositionSetting，按照不同的方式刷新布局内的所有element：
 ```
 public void RefreshData(ContentPositionSetting contentPositionSetting = ContentPositionSetting.keep, Action onComplete = null)
 
