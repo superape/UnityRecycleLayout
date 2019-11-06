@@ -21,6 +21,7 @@ public class ButtonBehaviour : MonoBehaviour
 
         currentIndexBtn.onClick.RemoveAllListeners();
         currentIndexBtn.onClick.AddListener(GetCurrentIndex);
+
     }
 
     void GotoIndex()

@@ -184,11 +184,11 @@ namespace RecycleLayout
             Vector2 vec = Vector2.zero;
             if (this.Left2Right)
             {
-                vec = new Vector2(0f, 1f);
+                vec = new Vector2(0f, 1f);//left-up
             }
             else
             {
-                vec = new Vector2(1f, 1f);
+                vec = new Vector2(1f, 1f);//right-up
             }
 
             SetScrollRectAnchorAndPivot(vec);
@@ -598,53 +598,24 @@ namespace RecycleLayout
             }
         }
 
-        public int GetCurrentIndex()
+        public virtual int GetCurrentIndex()
         {
-            int index = int.MaxValue;
+            int index = 0;
+            int begin = 0, end = this.elementPositionInfoMapper.Count - 1;
             if (this.Vertical)
             {
                 float currentPos = content.localPosition.y;
-
-                for (int i = 0; i < bufferPool.Length; i++)
-                {
-                    List<ElementBuffer> buffers = bufferPool[i];
-                    for (int j = 0; j < buffers.Count; j++)
-                    {
-                        ElementBuffer buffer = buffers[j];
-                        if (buffer.IsUsing && buffer.PositionInfo.LocalPos.y <= -currentPos && buffer.ElementIndex < index)
-                        {
-                            index = buffer.ElementIndex;
-                        }
-                    }
-                }
+                index = Position2IndexVertical(currentPos, begin, end);
             }
             else if (this.Horizontal)
             {
                 float currentPos = content.localPosition.x;
-                for (int i = 0; i < bufferPool.Length; i++)
-                {
-                    List<ElementBuffer> buffers = bufferPool[i];
-                    for (int j = 0; j < buffers.Count; j++)
-                    {
-                        ElementBuffer buffer = buffers[j];
-                        if (buffer.IsUsing)
-                        {
-                            if (this.Left2Right && buffer.PositionInfo.LocalPos.x >= -currentPos && buffer.ElementIndex < index)
-                            {
-                                index = buffer.ElementIndex;
-                            }
-                            else if (!this.Left2Right && buffer.PositionInfo.LocalPos.x <= -currentPos && buffer.ElementIndex < index)
-                            {
-                                index = buffer.ElementIndex;
-                            }
-                        }
-                    }
-                }
+                index = Position2IndexHorizontal(currentPos, begin, end);
             }
             return index;
         }
 
-        public void RefreshData(ContentPositionSetting contentPositionSetting = ContentPositionSetting.keep, Action onComplete = null)
+        public virtual void RefreshData(ContentPositionSetting contentPositionSetting = ContentPositionSetting.keep, Action onComplete = null)
         {
             Adapter.Initialize();
 
@@ -655,6 +626,62 @@ namespace RecycleLayout
             if (onComplete != null)
             {
                 onComplete();
+            }
+        }
+
+        private int Position2IndexVertical(float position, int begin, int end)
+        {
+            int mid = (begin + end) / 2; ;
+            if (position > -elementPositionInfoMapper[mid].LocalPos.y)
+            {
+                if (position <= -elementPositionInfoMapper[mid].LocalPos.y + GetElementSize(mid).y || Math.Abs(end - mid) <= 1)
+                {
+                    return mid;
+                }
+                else
+                {
+                    return Position2IndexVertical(position, mid, end);
+                }
+            }
+            else
+            {
+                if (position >= -elementPositionInfoMapper[mid].LocalPos.y - GetElementSize(mid).y || Math.Abs(end - mid) <= 1)
+                {
+                    return mid;
+                }
+                else
+                {
+                    return Position2IndexVertical(position, begin, mid);
+                }
+            }
+        }
+
+        private int Position2IndexHorizontal(float position, int begin, int end)
+        {
+            int mid = (begin + end) / 2; ;
+            if (position > -elementPositionInfoMapper[mid].LocalPos.x)
+            {
+                if (position <= -elementPositionInfoMapper[mid].LocalPos.x + GetElementSize(mid).x || Math.Abs(end - mid) <= 1)
+                {
+                    Debug.LogFormat("Hit at:[{0}]", mid);
+                    return mid;
+                }
+                else
+                {
+                    return Position2IndexHorizontal(position, mid, end);
+                }
+            }
+            else
+            {
+                if (position >= -elementPositionInfoMapper[mid].LocalPos.x - GetElementSize(mid).x || Math.Abs(end - mid) <= 1)
+                {
+                    Debug.LogFormat("Hit at:[{0}]", mid);
+                    return mid;
+                }
+                else
+                {
+                    return Position2IndexHorizontal(position, begin, mid);
+                }
             }
         }
         #endregion
